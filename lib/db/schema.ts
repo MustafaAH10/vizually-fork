@@ -68,6 +68,43 @@ export const invitations = pgTable('invitations', {
   status: varchar('status', { length: 20 }).notNull().default('pending'),
 });
 
+export const canvases = pgTable('canvases', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  teamId: integer('team_id')
+    .notNull()
+    .references(() => teams.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const canvasElements = pgTable('canvas_elements', {
+  id: serial('id').primaryKey(),
+  canvasId: integer('canvas_id')
+    .notNull()
+    .references(() => canvases.id),
+  type: varchar('type', { length: 50 }).notNull(), // 'node', 'edge', 'text', 'image', etc.
+  content: text('content').notNull(), // JSON string containing element data
+  position: text('position').notNull(), // JSON string containing x, y coordinates
+  metadata: text('metadata'), // Additional JSON data
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const canvasShares = pgTable('canvas_shares', {
+  id: serial('id').primaryKey(),
+  canvasId: integer('canvas_id')
+    .notNull()
+    .references(() => canvases.id),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id),
+  permissionLevel: varchar('permission_level', { length: 20 }).notNull(), // 'view', 'edit', 'admin'
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const teamsRelations = relations(teams, ({ many }) => ({
   teamMembers: many(teamMembers),
   activityLogs: many(activityLogs),
@@ -112,6 +149,33 @@ export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
   }),
 }));
 
+export const canvasesRelations = relations(canvases, ({ one, many }) => ({
+  team: one(teams, {
+    fields: [canvases.teamId],
+    references: [teams.id],
+  }),
+  elements: many(canvasElements),
+  shares: many(canvasShares),
+}));
+
+export const canvasElementsRelations = relations(canvasElements, ({ one }) => ({
+  canvas: one(canvases, {
+    fields: [canvasElements.canvasId],
+    references: [canvases.id],
+  }),
+}));
+
+export const canvasSharesRelations = relations(canvasShares, ({ one }) => ({
+  canvas: one(canvases, {
+    fields: [canvasShares.canvasId],
+    references: [canvases.id],
+  }),
+  user: one(users, {
+    fields: [canvasShares.userId],
+    references: [users.id],
+  }),
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Team = typeof teams.$inferSelect;
@@ -140,3 +204,10 @@ export enum ActivityType {
   INVITE_TEAM_MEMBER = 'INVITE_TEAM_MEMBER',
   ACCEPT_INVITATION = 'ACCEPT_INVITATION',
 }
+
+export type Canvas = typeof canvases.$inferSelect;
+export type NewCanvas = typeof canvases.$inferInsert;
+export type CanvasElement = typeof canvasElements.$inferSelect;
+export type NewCanvasElement = typeof canvasElements.$inferInsert;
+export type CanvasShare = typeof canvasShares.$inferSelect;
+export type NewCanvasShare = typeof canvasShares.$inferInsert;
