@@ -1,7 +1,8 @@
 import { stripe } from '../payments/stripe';
-import { db } from './drizzle';
+import { getDb } from './drizzle';
 import { users } from './schema';
 import { hash } from 'bcryptjs';
+import { hashPassword } from '@/lib/auth/password';
 
 async function createStripeProducts() {
   console.log('Creating Stripe products and prices...');
@@ -39,30 +40,23 @@ async function createStripeProducts() {
   console.log('Stripe products and prices created successfully.');
 }
 
-async function seed() {
-  // Create a test user
-  const passwordHash = await hash('password123', 10);
-  const [user] = await db
-    .insert(users)
-    .values({
-      name: 'Test User',
-      email: 'test@example.com',
-      passwordHash,
-      role: 'admin',
-    })
-    .returning();
+async function main() {
+  const db = await getDb();
+  
+  // Create admin user
+  const adminPassword = await hashPassword('admin123');
+  await db.insert(users).values({
+    name: 'Admin',
+    email: 'admin@example.com',
+    passwordHash: adminPassword,
+    role: 'admin',
+  });
 
-  console.log('Created test user:', user.email);
-
-  await createStripeProducts();
+  console.log('Seed completed successfully');
+  process.exit(0);
 }
 
-seed()
-  .then(() => {
-    console.log('Database seeded successfully');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('Error seeding database:', error);
-    process.exit(1);
-  });
+main().catch((err) => {
+  console.error('Seed failed:', err);
+  process.exit(1);
+});

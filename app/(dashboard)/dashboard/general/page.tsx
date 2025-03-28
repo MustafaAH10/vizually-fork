@@ -18,7 +18,10 @@ export default function GeneralPage() {
   const { userPromise } = useUser();
   const user = use(userPromise);
   const [state, formAction, isPending] = useActionState<ActionState, FormData>(
-    updateAccount,
+    async (state: ActionState, formData: FormData) => {
+      const result = await updateAccount(formData);
+      return result;
+    },
     { error: '', success: '' }
   );
 

@@ -1,7 +1,9 @@
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { getDb } from './drizzle';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import * as dotenv from 'dotenv';
-import { db } from './drizzle';
 import { sql } from 'drizzle-orm';
 
 // Load environment variables from .env file
@@ -21,7 +23,7 @@ async function applyMigrations() {
 
     // Execute each statement
     for (const statement of statements) {
-      await db.execute(sql.raw(statement));
+      await getDb().execute(sql.raw(statement));
     }
 
     console.log('Migration applied successfully!');
@@ -31,4 +33,18 @@ async function applyMigrations() {
   }
 }
 
-applyMigrations(); 
+async function main() {
+  const db = await getDb();
+  await migrate(db, { migrationsFolder: './drizzle' });
+  process.exit(0);
+}
+
+applyMigrations().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+}); 

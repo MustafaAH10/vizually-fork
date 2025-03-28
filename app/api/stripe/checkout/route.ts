@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/payments/stripe';
-import { db } from '@/lib/db/drizzle';
+import { getDb } from '@/lib/db/drizzle';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
       throw new Error('No customer email found in session');
     }
 
+    const db = await getDb();
     const user = await db
       .select()
       .from(users)

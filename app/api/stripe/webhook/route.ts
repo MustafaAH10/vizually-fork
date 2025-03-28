@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { stripe } from '@/lib/payments/stripe';
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/drizzle';
+import { getDb } from '@/lib/db/drizzle';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const db = await getDb();
+
     switch (event.type) {
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
