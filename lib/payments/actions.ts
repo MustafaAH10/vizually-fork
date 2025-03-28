@@ -1,15 +1,14 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { createCheckoutSession, createCustomerPortalSession } from './stripe';
-import { withTeam } from '@/lib/auth/middleware';
+import { createCheckoutSession } from './stripe';
+import { withAuth } from '@/lib/auth/middleware';
 
-export const checkoutAction = withTeam(async (formData, team) => {
+export const checkoutAction = withAuth(async (formData) => {
   const priceId = formData.get('priceId') as string;
-  await createCheckoutSession({ team: team, priceId });
-});
+  if (!priceId) {
+    throw new Error('Price ID is required');
+  }
 
-export const customerPortalAction = withTeam(async (_, team) => {
-  const portalSession = await createCustomerPortalSession(team);
-  redirect(portalSession.url);
+  await createCheckoutSession({ priceId });
 });

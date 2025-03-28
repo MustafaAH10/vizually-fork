@@ -23,37 +23,66 @@ type SessionData = {
 };
 
 export async function signToken(payload: SessionData) {
-  return await new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('1 day from now')
-    .sign(key);
+  try {
+    return await new SignJWT(payload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1 day from now')
+      .sign(key);
+  } catch (error) {
+    console.error('Error signing token:', error);
+    throw new Error('Failed to create session');
+  }
 }
 
 export async function verifyToken(input: string) {
-  const { payload } = await jwtVerify(input, key, {
-    algorithms: ['HS256'],
-  });
-  return payload as SessionData;
+  try {
+    const { payload } = await jwtVerify(input, key, {
+      algorithms: ['HS256'],
+    });
+    return payload as SessionData;
+  } catch (error) {
+    console.error('Error verifying token:', error);
+    return null;
+  }
 }
 
 export async function getSession() {
-  const session = (await cookies()).get('session')?.value;
-  if (!session) return null;
-  return await verifyToken(session);
+  try {
+    const session = (await cookies()).get('session')?.value;
+    if (!session) return null;
+    return await verifyToken(session);
+  } catch (error) {
+    console.error('Error getting session:', error);
+    return null;
+  }
 }
 
-export async function setSession(user: NewUser) {
-  const expiresInOneDay = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const session: SessionData = {
-    user: { id: user.id! },
-    expires: expiresInOneDay.toISOString(),
-  };
-  const encryptedSession = await signToken(session);
-  (await cookies()).set('session', encryptedSession, {
-    expires: expiresInOneDay,
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-  });
+export async function setSession(user: NewUser | null) {
+  try {
+    const cookieStore = await cookies();
+    
+    if (!user) {
+      cookieStore.delete('session');
+      return;
+    }
+
+    const expiresInOneDay = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const session: SessionData = {
+      user: { id: user.id! },
+      expires: expiresInOneDay.toISOString(),
+    };
+    const encryptedSession = await signToken(session);
+    
+    cookieStore.set('session', encryptedSession, {
+      expires: expiresInOneDay,
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+    });
+  } catch (error) {
+    console.error('Error setting session:', error);
+    throw new Error('Failed to set session');
+  }
 }
