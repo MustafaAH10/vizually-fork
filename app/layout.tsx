@@ -5,12 +5,12 @@ import { UserProvider } from '@/lib/auth';
 import { getUser } from '@/lib/db/queries';
 
 export const metadata: Metadata = {
-  title: 'Next.js SaaS Starter',
-  description: 'Get started quickly with Next.js, Postgres, and Stripe.',
+  title: 'Vizually - Transform Text into Beautiful Visuals',
+  description: 'Create stunning visualizations from your text using AI. Perfect for mind maps, flowcharts, and more. No design skills needed.',
 };
 
 export const viewport: Viewport = {
-  maximumScale: 1,
+  themeColor: '#f97316', // orange-500
 };
 
 const manrope = Manrope({ subsets: ['latin'] });
