@@ -31,6 +31,119 @@ const signInSchema = z.object({
 
 type SignInData = z.infer<typeof signInSchema>;
 
+const updateAccountSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email address'),
+});
+
+export async function updateAccount(formData: FormData) {
+  try {
+    const rawData = Object.fromEntries(formData.entries());
+    const data = updateAccountSchema.parse(rawData);
+    const db = await getDb();
+    const cookieStore = await cookies();
+    const userId = parseInt(cookieStore.get('userId')?.value || '0', 10);
+
+    if (!userId) {
+      throw new Error('Not authenticated');
+    }
+
+    const [user] = await db
+      .update(users)
+      .set({
+        name: data.name,
+        email: data.email,
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    return { success: 'Account updated successfully' };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { error: error.errors[0].message };
+    }
+    if (error instanceof Error) {
+      return { error: error.message };
+    }
+    return { error: 'Failed to update account' };
+  }
+}
+
+const updatePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+});
+
+export async function updatePassword(formData: FormData) {
+  try {
+    const rawData = Object.fromEntries(formData.entries());
+    const data = updatePasswordSchema.parse(rawData);
+    const db = await getDb();
+    const cookieStore = await cookies();
+    const userId = parseInt(cookieStore.get('userId')?.value || '0', 10);
+
+    if (!userId) {
+      throw new Error('Not authenticated');
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const isValid = await comparePasswords(data.currentPassword, user.passwordHash);
+    if (!isValid) {
+      throw new Error('Current password is incorrect');
+    }
+
+    const newPasswordHash = await hashPassword(data.newPassword);
+    await db
+      .update(users)
+      .set({ passwordHash: newPasswordHash })
+      .where(eq(users.id, userId));
+
+    return { success: 'Password updated successfully' };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { error: error.errors[0].message };
+    }
+    if (error instanceof Error) {
+      return { error: error.message };
+    }
+    return { error: 'Failed to update password' };
+  }
+}
+
+export async function deleteAccount() {
+  try {
+    const db = await getDb();
+    const cookieStore = await cookies();
+    const userId = parseInt(cookieStore.get('userId')?.value || '0', 10);
+
+    if (!userId) {
+      throw new Error('Not authenticated');
+    }
+
+    await db.delete(users).where(eq(users.id, userId));
+    await setSessionCookie(null);
+    redirect('/sign-in');
+  } catch (error) {
+    if (error instanceof Error) {
+      return { error: error.message };
+    }
+    return { error: 'Failed to delete account' };
+  }
+}
+
 export async function signUp(formData: FormData) {
   try {
     const rawData = Object.fromEntries(formData.entries());

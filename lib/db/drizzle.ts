@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema';
 import dotenv from 'dotenv';
+import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 dotenv.config();
 
@@ -24,4 +25,10 @@ const db = drizzle(client, { schema });
 
 export async function getDb() {
   return db;
+}
+
+// Helper function to execute queries
+export async function query<T>(fn: (db: PostgresJsDatabase<typeof schema>) => Promise<T>): Promise<T> {
+  const database = await getDb();
+  return fn(database);
 }
