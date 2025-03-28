@@ -1,17 +1,18 @@
 'use server';
 
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '@/lib/db/drizzle';
+import { getDb } from '@/lib/db/drizzle';
 import {
   User,
   users,
   type NewUser,
 } from '@/lib/db/schema';
-import { comparePasswords, hashPassword, setSession } from '@/lib/auth/session';
+import { comparePasswords, hashPassword } from '@/lib/auth/password';
 import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
 import { getUser } from '@/lib/db/queries';
 import { z } from 'zod';
+import { setSessionCookie } from '@/lib/auth/server';
+import { cookies } from 'next/headers';
 
 const signUpSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -35,6 +36,8 @@ export async function signUp(formData: FormData) {
     const rawData = Object.fromEntries(formData.entries());
     const data = signUpSchema.parse(rawData);
 
+    const db = await getDb();
+
     const existingUser = await db
       .select()
       .from(users)
@@ -56,7 +59,7 @@ export async function signUp(formData: FormData) {
       })
       .returning();
 
-    await setSession(user);
+    await setSessionCookie(user);
     redirect(data.redirect || '/dashboard');
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -74,6 +77,8 @@ export async function signIn(formData: FormData) {
     const rawData = Object.fromEntries(formData.entries());
     const data = signInSchema.parse(rawData);
 
+    const db = await getDb();
+
     const [user] = await db
       .select()
       .from(users)
@@ -89,7 +94,7 @@ export async function signIn(formData: FormData) {
       throw new Error('Invalid email or password');
     }
 
-    await setSession(user);
+    await setSessionCookie(user);
     redirect(data.redirect || '/dashboard');
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -104,7 +109,7 @@ export async function signIn(formData: FormData) {
 
 export async function signOut() {
   try {
-    await setSession(null);
+    await setSessionCookie(null);
     redirect('/sign-in');
   } catch (error) {
     console.error('Sign out error:', error);

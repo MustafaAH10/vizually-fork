@@ -1,16 +1,18 @@
+'use server';
+
 import { desc, and, eq, isNull } from 'drizzle-orm';
-import { db } from './drizzle';
+import { getDb } from './drizzle';
 import { users } from './schema';
-import { cookies } from 'next/headers';
-import { verifyToken } from '@/lib/auth/session';
+import { verifyToken } from '@/lib/auth/server';
+import { getSessionCookie } from '@/lib/auth/server';
 
 export async function getUser() {
-  const sessionCookie = (await cookies()).get('session');
-  if (!sessionCookie || !sessionCookie.value) {
+  const session = await getSessionCookie();
+  if (!session) {
     return null;
   }
 
-  const sessionData = await verifyToken(sessionCookie.value);
+  const sessionData = await verifyToken(session);
   if (!sessionData?.user?.id) {
     return null;
   }
@@ -19,6 +21,7 @@ export async function getUser() {
     return null;
   }
 
+  const db = await getDb();
   const user = await db
     .select()
     .from(users)
@@ -33,6 +36,7 @@ export async function getUser() {
 }
 
 export async function getUserById(userId: number) {
+  const db = await getDb();
   const result = await db
     .select()
     .from(users)
