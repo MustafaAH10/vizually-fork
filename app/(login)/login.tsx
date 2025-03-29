@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useActionState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CircleIcon } from 'lucide-react';
 import { signIn, signUp } from './actions';
-import { useFormState } from 'react-dom';
 
 type FormState = {
   error: string | null;
@@ -18,7 +18,7 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
   const redirect = searchParams.get('redirect') || '';
   const priceId = searchParams.get('priceId') || '';
   const inviteId = searchParams.get('inviteId') || '';
-  const [state, formAction] = useFormState<FormState, FormData>(
+  const [state, formAction] = useActionState<FormState, FormData>(
     async (prevState: FormState, formData: FormData) => {
       try {
         await (mode === 'signin' ? signIn(formData) : signUp(formData));
