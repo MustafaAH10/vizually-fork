@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Wand2, Share2, Brain } from 'lucide-react';
-import { Terminal } from './terminal';
+import { VisualizationPreview } from './visualization-preview';
 
 export default function HomePage() {
   return (
@@ -26,7 +26,7 @@ export default function HomePage() {
               </div>
             </div>
             <div className="mt-12 relative sm:max-w-lg sm:mx-auto lg:mt-0 lg:max-w-none lg:mx-0 lg:col-span-6 lg:flex lg:items-center">
-              <Terminal />
+              <VisualizationPreview />
             </div>
           </div>
         </div>

@@ -4,10 +4,11 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Users, Settings, Shield, Activity, Menu } from 'lucide-react';
+import { Users, Settings, Shield, Activity, Menu, Palette } from 'lucide-react';
 
 const navigation = [
   { href: '/dashboard', icon: Users, label: 'Profile' },
+  { href: '/canvas', icon: Palette, label: 'Canvas' },
 ];
 
 export default function DashboardLayout({
@@ -29,7 +30,11 @@ export default function DashboardLayout({
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              className={`flex items-center px-4 py-2 text-sm ${
+                pathname === item.href
+                  ? 'bg-orange-50 text-orange-600'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
             >
               <item.icon className="w-5 h-5 mr-3" />
               {item.label}
