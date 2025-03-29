@@ -40,8 +40,17 @@ export default function SecurityPage() {
     event: React.FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault();
+    const form = event.currentTarget;
+    const newPassword = form.newPassword.value;
+    const confirmPassword = form.confirmPassword.value;
+
+    if (newPassword !== confirmPassword) {
+      passwordAction(new FormData(form));
+      return;
+    }
+
     startTransition(() => {
-      passwordAction(new FormData(event.currentTarget));
+      passwordAction(new FormData(form));
     });
   };
 

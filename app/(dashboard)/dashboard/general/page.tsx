@@ -27,13 +27,6 @@ export default function GeneralPage() {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    // If you call the Server Action directly, it will automatically
-    // reset the form. We don't want that here, because we want to keep the
-    // client-side values in the inputs. So instead, we use an event handler
-    // which calls the action. You must wrap direct calls with startTransition.
-    // When you use the `action` prop it automatically handles that for you.
-    // Another option here is to persist the values to local storage. I might
-    // explore alternative options.
     startTransition(() => {
       formAction(new FormData(event.currentTarget));
     });
@@ -57,7 +50,7 @@ export default function GeneralPage() {
                 id="name"
                 name="name"
                 placeholder="Enter your name"
-                defaultValue={user?.name || ''}
+                defaultValue={user?.name ?? ''}
                 required
               />
             </div>
@@ -68,7 +61,7 @@ export default function GeneralPage() {
                 name="email"
                 type="email"
                 placeholder="Enter your email"
-                defaultValue={user?.email || ''}
+                defaultValue={user?.email ?? ''}
                 required
               />
             </div>

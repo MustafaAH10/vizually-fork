@@ -57,13 +57,19 @@ export async function getStripeProducts() {
     expand: ['data.default_price']
   });
 
-  return products.data.map((product) => ({
-    id: product.id,
-    name: product.name,
-    description: product.description,
-    defaultPriceId:
-      typeof product.default_price === 'string'
+  return products.data
+    .filter((product) => {
+      const defaultPriceId = typeof product.default_price === 'string'
         ? product.default_price
-        : product.default_price?.id
-  }));
+        : product.default_price?.id;
+      return defaultPriceId !== undefined;
+    })
+    .map((product) => ({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      defaultPriceId: typeof product.default_price === 'string'
+        ? product.default_price
+        : product.default_price!.id
+    }));
 }

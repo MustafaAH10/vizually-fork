@@ -9,6 +9,17 @@ export default async function PricingPage() {
   const user = await getUser();
   const products = await getStripeProducts();
 
+  if (!products.length) {
+    return (
+      <div className="container mx-auto py-12 text-center">
+        <h1 className="text-4xl font-bold mb-4">Pricing Unavailable</h1>
+        <p className="text-gray-600">
+          We're currently updating our pricing plans. Please check back later.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-12">
       <div className="text-center mb-12">

@@ -9,21 +9,27 @@ import { CircleIcon } from 'lucide-react';
 import { signIn, signUp } from './actions';
 import { useFormState } from 'react-dom';
 
+type FormState = {
+  error: string | null;
+};
+
 export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect');
-  const priceId = searchParams.get('priceId');
-  const inviteId = searchParams.get('inviteId');
-  const [error, formAction] = useFormState(
-    async (prevState: string | null, formData: FormData) => {
+  const redirect = searchParams.get('redirect') || '';
+  const priceId = searchParams.get('priceId') || '';
+  const inviteId = searchParams.get('inviteId') || '';
+  const [state, formAction] = useFormState<FormState, FormData>(
+    async (prevState: FormState, formData: FormData) => {
       try {
         await (mode === 'signin' ? signIn(formData) : signUp(formData));
-        return null;
+        return { error: null };
       } catch (error) {
-        return error instanceof Error ? error.message : 'An unexpected error occurred';
+        return { 
+          error: error instanceof Error ? error.message : 'An unexpected error occurred'
+        };
       }
     },
-    null
+    { error: null }
   );
 
   return (
@@ -41,9 +47,9 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <form className="space-y-6" action={formAction}>
-          <input type="hidden" name="redirect" value={redirect || ''} />
-          <input type="hidden" name="priceId" value={priceId || ''} />
-          <input type="hidden" name="inviteId" value={inviteId || ''} />
+          <input type="hidden" name="redirect" value={redirect} />
+          <input type="hidden" name="priceId" value={priceId} />
+          <input type="hidden" name="inviteId" value={inviteId} />
           {mode === 'signup' && (
             <div>
               <Label
@@ -111,8 +117,8 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
             </div>
           </div>
 
-          {error && (
-            <div className="text-red-500 text-sm">{error}</div>
+          {state.error && (
+            <div className="text-red-500 text-sm">{state.error}</div>
           )}
 
           <div>
