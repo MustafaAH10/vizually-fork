@@ -21,9 +21,12 @@ async function applyMigrations() {
       .map(s => s.trim())
       .filter(s => s.length > 0);
 
+    // Get the database connection
+    const db = await getDb();
+
     // Execute each statement
     for (const statement of statements) {
-      await getDb().execute(sql.raw(statement));
+      await db.execute(sql.raw(statement));
     }
 
     console.log('Migration applied successfully!');
