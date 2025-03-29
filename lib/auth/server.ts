@@ -6,7 +6,8 @@ import { signToken, verifyToken } from './edge';
 
 export async function getSessionCookie() {
   const cookieStore = await cookies();
-  return cookieStore.get('session')?.value;
+  const sessionCookie = cookieStore.get('session');
+  return sessionCookie?.value ?? null;
 }
 
 export async function setSessionCookie(user: NewUser | null) {
@@ -17,9 +18,13 @@ export async function setSessionCookie(user: NewUser | null) {
     return;
   }
 
+  if (!user.id) {
+    throw new Error('User ID is required');
+  }
+
   const expiresInOneDay = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const session = {
-    user: { id: user.id! },
+    user: { id: user.id },
     expires: expiresInOneDay.toISOString(),
   };
   const encryptedSession = await signToken(session);

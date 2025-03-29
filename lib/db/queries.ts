@@ -22,10 +22,15 @@ export async function getUser() {
   }
 
   const db = await getDb();
+  const userId = Number(sessionData.user.id);
+  if (isNaN(userId)) {
+    return null;
+  }
+
   const user = await db
     .select()
     .from(users)
-    .where(and(eq(users.id, Number(sessionData.user.id)), isNull(users.deletedAt)))
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
     .limit(1);
 
   if (user.length === 0) {
@@ -36,6 +41,10 @@ export async function getUser() {
 }
 
 export async function getUserById(userId: number) {
+  if (!userId || isNaN(userId)) {
+    return null;
+  }
+
   const db = await getDb();
   const result = await db
     .select()
