@@ -8,12 +8,15 @@ import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 
 dotenv.config();
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is not set');
+// Support both POSTGRES_URL and DATABASE_URL for compatibility
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+
+if (!databaseUrl) {
+  throw new Error('Neither DATABASE_URL nor POSTGRES_URL environment variable is set');
 }
 
 // Use edge-compatible postgres configuration
-const client = postgres(process.env.DATABASE_URL, {
+const client = postgres(databaseUrl, {
   ssl: 'require',
   max: 1,
   idle_timeout: 20,
