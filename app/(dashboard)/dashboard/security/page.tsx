@@ -162,7 +162,6 @@ export default function SecurityPage() {
             <Button
               type="submit"
               variant="destructive"
-              className="bg-red-600 hover:bg-red-700"
               disabled={isDeletePending}
             >
               {isDeletePending ? (
