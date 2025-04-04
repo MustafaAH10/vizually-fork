@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -15,6 +15,12 @@ import ReactFlow, {
   useReactFlow,
   Panel,
   ReactFlowProvider,
+  NodeTypes,
+  EdgeTypes,
+  BaseEdge,
+  EdgeProps,
+  getBezierPath,
+  Position,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import '@/app/styles/canvas.css';
@@ -23,6 +29,9 @@ import { Trash2 } from 'lucide-react';
 import CanvasToolbar from './CanvasToolbar';
 import EditableNode from './EditableNode';
 import html2canvas from 'html2canvas';
+import { cn } from '@/lib/utils';
+import { VennDiagramNode, layoutVennDiagram } from './VennDiagram';
+import { BarChartNode as BarChartComponent, layoutBarChart } from './BarChart';
 
 // Define visualization types
 export type VisualizationType = 
@@ -41,16 +50,16 @@ export interface VisualizationData {
   position?: { x: number; y: number };
 }
 
-// Custom node types
-const nodeTypes = {
-  barChart: BarChartNode,
+// Custom node types - defined outside component and memoized
+const nodeTypes: NodeTypes = {
   mindMap: MindMapNode,
   flowChart: FlowChartNode,
   vennDiagram: VennDiagramNode,
+  editableNode: EditableNode,
+  barChart: BarChartComponent,
   arrowDiagram: ArrowDiagramNode,
   cycleDiagram: CycleDiagramNode,
   hierarchyDiagram: HierarchyDiagramNode,
-  editableNode: EditableNode,
 };
 
 // Bar Chart Node Component
@@ -72,15 +81,33 @@ function BarChartNode({ data }: { data: any }) {
   );
 }
 
-// Mind Map Node Component
+// Enhanced MindMapNode component
 function MindMapNode({ data }: { data: any }) {
   return (
-    <div className="bg-white p-4 rounded-lg shadow-lg border border-gray-200 min-w-[200px] max-w-[300px]">
-      <div className="text-center font-semibold mb-2 text-lg break-words">{data.title}</div>
-      {data.children && (
-        <div className="mt-2 text-sm text-gray-600 space-y-1">
-          {data.children.map((child: string, index: number) => (
-            <div key={index} className="ml-4 break-words">• {child}</div>
+    <div className={cn(
+      "bg-white p-4 rounded-lg shadow-lg border border-gray-200",
+      "min-w-[200px] max-w-[300px] transition-all duration-200",
+      "hover:shadow-xl hover:scale-105",
+      data.isRoot ? "border-2 border-primary" : ""
+    )}>
+      <div className={cn(
+        "text-center font-semibold mb-2 break-words",
+        data.isRoot ? "text-xl text-primary" : "text-lg"
+      )}>
+        {data.title}
+      </div>
+      {data.description && (
+        <div className="mt-2 text-sm text-gray-600 space-y-2">
+          {data.description.split('\n').map((line: string, index: number) => (
+            <div 
+              key={index} 
+              className={cn(
+                "ml-4 break-words transition-colors duration-200",
+                "hover:text-primary hover:font-medium"
+              )}
+            >
+              • {line}
+            </div>
           ))}
         </div>
       )}
@@ -88,67 +115,36 @@ function MindMapNode({ data }: { data: any }) {
   );
 }
 
-// Flow Chart Node Component
+// Enhanced FlowChartNode component
 function FlowChartNode({ data }: { data: any }) {
   const getNodeStyle = () => {
     switch (data.type) {
       case 'start':
-        return 'bg-green-500 text-white';
+        return 'bg-gradient-to-br from-green-500 to-green-600 text-white';
       case 'end':
-        return 'bg-red-500 text-white';
+        return 'bg-gradient-to-br from-red-500 to-red-600 text-white';
       case 'decision':
-        return 'bg-yellow-500 text-white';
+        return 'bg-gradient-to-br from-yellow-500 to-yellow-600 text-white';
       default:
-        return 'bg-blue-500 text-white';
+        return 'bg-gradient-to-br from-blue-500 to-blue-600 text-white';
     }
   };
 
   return (
-    <div className={`p-4 rounded-lg shadow-lg border border-gray-200 min-w-[200px] max-w-[300px] ${getNodeStyle()}`}>
-      <div className="text-center font-semibold mb-2 text-lg break-words">{data.title}</div>
-      {data.description && (
-        <div className="mt-2 text-sm opacity-90 break-words">{data.description}</div>
-      )}
-    </div>
-  );
-}
-
-// Venn Diagram Node Component
-function VennDiagramNode({ data }: { data: any }) {
-  const getTextColor = () => {
-    const color = data.color.toLowerCase();
-    // For light colors, use dark text
-    if (color.includes('yellow') || color.includes('lime') || color.includes('cyan')) {
-      return 'text-gray-800';
-    }
-    return 'text-white';
-  };
-
-  return (
-    <div 
-      className={`absolute rounded-full shadow-lg border-2 border-white flex items-center justify-center ${getTextColor()}`}
-      style={{
-        width: data.radius * 2,
-        height: data.radius * 2,
-        backgroundColor: data.color,
-        opacity: 0.6,
-        mixBlendMode: 'multiply',
-        zIndex: data.zIndex || 0,
-        transform: `translate(-50%, -50%)`,
-      }}
-    >
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="text-center p-4 font-semibold break-words w-[80%]">
-          <div className="text-xl mb-2">{data.title}</div>
-          {data.items && (
-            <div className="text-sm space-y-1">
-              {data.items.map((item: string, index: number) => (
-                <div key={index} className="opacity-90">{item}</div>
-              ))}
-            </div>
-          )}
-        </div>
+    <div className={cn(
+      "p-4 rounded-lg shadow-lg border border-gray-200",
+      "min-w-[200px] max-w-[300px] transition-all duration-200",
+      "hover:shadow-xl hover:scale-105",
+      getNodeStyle()
+    )}>
+      <div className="text-center font-semibold mb-2 text-lg break-words">
+        {data.title}
       </div>
+      {data.description && (
+        <div className="mt-2 text-sm opacity-90 break-words">
+          {data.description}
+        </div>
+      )}
     </div>
   );
 }
@@ -230,29 +226,49 @@ function CanvasContent({ visualization }: CanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const { project, getNodes } = useReactFlow();
-  const nodeIdRef = useRef(0);
+  const { project } = useReactFlow();
 
-  const onConnect = useCallback(
-    (params: Connection) => {
-      if (params.source && params.target) {
-        const edge: Edge = {
-          id: `edge-${Date.now()}`,
-          source: params.source,
-          target: params.target,
-          sourceHandle: params.sourceHandle || null,
-          targetHandle: params.targetHandle || null,
-          type: 'smoothstep',
-          animated: false,
-          style: { stroke: '#b1b1b7', strokeWidth: 2 },
-          markerEnd: { type: MarkerType.ArrowClosed },
-          data: { editable: true }
-        };
-        setEdges((eds) => [...eds, edge]);
-      }
-    },
-    [setEdges]
-  );
+  useEffect(() => {
+    if (!visualization) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+
+    console.log('Processing visualization:', visualization);
+
+    switch (visualization.type) {
+      case 'barChart':
+        if (!visualization.data.barChart?.categories || !visualization.data.barChart?.values) {
+          console.error('Invalid bar chart data structure:', visualization.data);
+          return;
+        }
+        const barChartNodes = layoutBarChart({
+          title: visualization.data.title || 'Bar Chart',
+          description: visualization.data.description,
+          categories: visualization.data.barChart.categories,
+          values: visualization.data.barChart.values,
+          colors: visualization.data.barChart.colors
+        });
+        setNodes(barChartNodes);
+        setEdges([]);
+        break;
+
+      case 'vennDiagram':
+        if (!visualization.data.vennDiagram?.circles) {
+          console.error('Invalid Venn diagram data structure:', visualization.data);
+          return;
+        }
+        const vennNodes = layoutVennDiagram(visualization.data.vennDiagram.circles);
+        setNodes(vennNodes);
+        setEdges([]);
+        break;
+
+      default:
+        console.error('Unknown visualization type:', visualization.type);
+        return;
+    }
+  }, [visualization, setNodes, setEdges]);
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     event.stopPropagation();
@@ -262,6 +278,16 @@ function CanvasContent({ visualization }: CanvasProps) {
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
   }, []);
+
+  const handleDeleteNode = useCallback(() => {
+    if (selectedNode) {
+      setNodes((nds) => nds.filter((node) => node.id !== selectedNode.id));
+      setEdges((eds) => eds.filter((edge) => 
+        edge.source !== selectedNode.id && edge.target !== selectedNode.id
+      ));
+      setSelectedNode(null);
+    }
+  }, [selectedNode, setNodes, setEdges]);
 
   const handleAddNode = useCallback(
     (type: string) => {
@@ -275,272 +301,6 @@ function CanvasContent({ visualization }: CanvasProps) {
     },
     [project, setNodes]
   );
-
-  const handleDeleteNode = useCallback(() => {
-    if (selectedNode) {
-      setNodes((nds) => nds.filter((node) => node.id !== selectedNode.id));
-      setEdges((eds) => eds.filter((edge) => 
-        edge.source !== selectedNode.id && edge.target !== selectedNode.id
-      ));
-      setSelectedNode(null);
-    }
-  }, [selectedNode, setNodes, setEdges]);
-
-  // Effect to handle new visualizations
-  useEffect(() => {
-    if (visualization) {
-      // Keep existing nodes and add new ones
-      const existingNodes = getNodes();
-      
-      if (visualization.type === 'barChart') {
-        const newNode: Node = {
-          id: `node-${Date.now()}`,
-          type: visualization.type,
-          position: visualization.position || { x: Math.random() * 500, y: Math.random() * 500 },
-          data: visualization.data,
-        };
-        setNodes((nds) => [...nds, newNode]);
-      } else if (visualization.type === 'vennDiagram') {
-        // Handle Venn diagram visualization
-        const { circles, intersections } = visualization.data;
-        
-        // Calculate center position
-        const centerX = 400;
-        const centerY = 300;
-        
-        // Transform circles to nodes with proper positioning
-        const circleNodes: Node[] = circles.map((circle: any, index: number) => {
-          let position;
-          const radius = 150; // Base radius for circles
-          
-          switch (circles.length) {
-            case 2:
-              // Two circles side by side with overlap
-              position = index === 0 
-                ? { x: centerX - radius/2, y: centerY }
-                : { x: centerX + radius/2, y: centerY };
-              break;
-            case 3:
-              // Three circles in triangular arrangement
-              const angle = (2 * Math.PI * index) / 3 - Math.PI / 2;
-              position = {
-                x: centerX + radius * Math.cos(angle) * 0.7,
-                y: centerY + radius * Math.sin(angle) * 0.7
-              };
-              break;
-            default:
-              position = { x: centerX, y: centerY };
-          }
-
-          return {
-            id: circle.id,
-            type: 'vennDiagram',
-            position: position,
-            data: {
-              ...circle,
-              radius: radius,
-              zIndex: 1,
-            },
-          };
-        });
-
-        // Transform intersections to nodes
-        const intersectionNodes: Node[] = intersections.map((intersection: any) => ({
-          id: intersection.id,
-          type: 'default',
-          position: {
-            x: centerX,
-            y: centerY,
-          },
-          style: {
-            zIndex: 2,
-          },
-          data: {
-            label: intersection.title,
-            className: 'bg-white px-2 py-1 rounded text-sm shadow-md',
-          },
-        }));
-
-        setNodes((nds) => [...existingNodes, ...circleNodes, ...intersectionNodes]);
-        setEdges([]);
-      } else if (visualization.type === 'arrowDiagram') {
-        // Handle arrow diagram visualization
-        const { nodes: newNodes, arrows } = visualization.data;
-        
-        const transformedNodes: Node[] = newNodes.map((node: any) => ({
-          id: node.id,
-          type: 'arrowDiagram',
-          position: node.position,
-          data: node,
-        }));
-
-        const transformedEdges: Edge[] = arrows.map((arrow: any) => ({
-          id: `${arrow.source}-${arrow.target}`,
-          source: arrow.source,
-          target: arrow.target,
-          label: arrow.label,
-          type: arrow.type || 'straight',
-          animated: arrow.type === 'dashed',
-          style: {
-            stroke: '#b1b1b7',
-            strokeWidth: arrow.type === 'dashed' ? 2 : 1,
-            strokeDasharray: arrow.type === 'dashed' ? '5,5' : undefined,
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 20,
-            height: 20,
-            color: '#b1b1b7',
-          },
-          labelStyle: {
-            fill: '#b1b1b7',
-            fontWeight: 500,
-            fontSize: 12,
-            background: 'white',
-            padding: '4px 8px',
-            borderRadius: '4px',
-          },
-        }));
-
-        setNodes(transformedNodes);
-        setEdges(transformedEdges);
-      } else if (visualization.type === 'cycleDiagram') {
-        // Handle cycle diagram visualization
-        const { nodes: newNodes, edges: newEdges } = visualization.data;
-        
-        const transformedNodes: Node[] = newNodes.map((node: any) => ({
-          id: node.id,
-          type: 'cycleDiagram',
-          position: node.position,
-          data: node,
-        }));
-
-        const transformedEdges: Edge[] = newEdges.map((edge: any) => ({
-          id: `${edge.source}-${edge.target}`,
-          source: edge.source,
-          target: edge.target,
-          label: edge.label,
-          type: 'curved',
-          animated: true,
-          style: {
-            stroke: '#b1b1b7',
-            strokeWidth: 2,
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 20,
-            height: 20,
-            color: '#b1b1b7',
-          },
-          labelStyle: {
-            fill: '#b1b1b7',
-            fontWeight: 500,
-            fontSize: 12,
-            background: 'white',
-            padding: '4px 8px',
-            borderRadius: '4px',
-          },
-        }));
-
-        setNodes(transformedNodes);
-        setEdges(transformedEdges);
-      } else if (visualization.type === 'hierarchyDiagram') {
-        // Handle hierarchy diagram visualization
-        const { nodes: newNodes, edges: newEdges } = visualization.data;
-        
-        const transformedNodes: Node[] = newNodes.map((node: any) => ({
-          id: node.id,
-          type: 'hierarchyDiagram',
-          position: node.position,
-          data: node,
-        }));
-
-        const transformedEdges: Edge[] = newEdges.map((edge: any) => ({
-          id: `${edge.source}-${edge.target}`,
-          source: edge.source,
-          target: edge.target,
-          label: edge.label,
-          type: 'straight',
-          style: {
-            stroke: '#b1b1b7',
-            strokeWidth: 2,
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 20,
-            height: 20,
-            color: '#b1b1b7',
-          },
-          labelStyle: {
-            fill: '#b1b1b7',
-            fontWeight: 500,
-            fontSize: 12,
-            background: 'white',
-            padding: '4px 8px',
-            borderRadius: '4px',
-          },
-        }));
-
-        setNodes(transformedNodes);
-        setEdges(transformedEdges);
-      } else if (visualization.type === 'mindMap' || visualization.type === 'flowChart') {
-        // Handle mind map and flowchart visualizations
-        const { nodes: newNodes, edges: newEdges } = visualization.data;
-        
-        const transformedNodes: Node[] = newNodes.map((node: any) => ({
-          id: node.id,
-          type: visualization.type,
-          position: node.position,
-          data: {
-            title: node.title,
-            description: node.description,
-            children: node.children,
-            type: node.type,
-          },
-        }));
-
-        // Common edge styling
-        const getEdgeStyle = (type: string, animated: boolean = false) => ({
-          stroke: '#b1b1b7',
-          strokeWidth: type === 'dashed' ? 2 : 1,
-          strokeDasharray: type === 'dashed' ? '5,5' : undefined,
-        });
-
-        const getEdgeLabelStyle = () => ({
-          fill: '#b1b1b7',
-          fontWeight: 500,
-          fontSize: 12,
-          background: 'white',
-          padding: '4px 8px',
-          borderRadius: '4px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        });
-
-        const getEdgeMarker = () => ({
-          type: MarkerType.ArrowClosed,
-          width: 20,
-          height: 20,
-          color: '#b1b1b7',
-        });
-
-        // Update all edge transformations to use these styles
-        const transformedEdges: Edge[] = newEdges.map((edge: any) => ({
-          id: `${edge.source}-${edge.target}`,
-          source: edge.source,
-          target: edge.target,
-          label: edge.label,
-          type: edge.type || 'smoothstep',
-          animated: edge.animated || false,
-          style: getEdgeStyle(edge.type, edge.animated),
-          markerEnd: getEdgeMarker(),
-          labelStyle: getEdgeLabelStyle(),
-        }));
-
-        setNodes((nds) => [...existingNodes, ...transformedNodes]);
-        setEdges((eds) => [...eds, ...transformedEdges]);
-      }
-    }
-  }, [visualization, setNodes, setEdges, getNodes]);
 
   const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
     // Handle double click to edit text
@@ -619,15 +379,15 @@ function CanvasContent({ visualization }: CanvasProps) {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         onNodeDoubleClick={onNodeDoubleClick}
         nodeTypes={nodeTypes}
         fitView
-        snapToGrid
-        snapGrid={[20, 20]}
-        deleteKeyCode="Delete"
+        fitViewOptions={{ padding: 0.2 }}
+        minZoom={0.5}
+        maxZoom={2}
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       >
         <Background />
         <Controls />
@@ -661,6 +421,131 @@ function CanvasContent({ visualization }: CanvasProps) {
       <CanvasToolbar onAddNode={handleAddNode} />
     </div>
   );
+}
+
+// Custom edge components
+const MindMapEdge = ({
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  label,
+  style = {},
+  markerEnd,
+}: any) => {
+  const [edgePath] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition: Position.Right,
+    targetX,
+    targetY,
+    targetPosition: Position.Left,
+  });
+
+  return (
+    <>
+      <path
+        d={edgePath}
+        className="react-flow__edge-path"
+        style={{
+          ...style,
+          strokeWidth: 2,
+          stroke: '#94a3b8',
+        }}
+        markerEnd={markerEnd}
+      />
+      {label && (
+        <text
+          x={(sourceX + targetX) / 2}
+          y={(sourceY + targetY) / 2}
+          textAnchor="middle"
+          alignmentBaseline="middle"
+          className="text-sm fill-gray-600 bg-white px-2 py-1"
+          style={{
+            transform: 'translate(0, -10px)',
+            fontSize: '12px',
+            fontWeight: 500,
+          }}
+        >
+          {label}
+        </text>
+      )}
+    </>
+  );
+};
+
+// Edge types mapping
+const edgeTypes: EdgeTypes = {
+  mindmap: MindMapEdge,
+};
+
+// Layout function for mind maps
+function layoutMindMap(nodes: Node[], edges: Edge[]): Node[] {
+  const rootNode = nodes.find(node => node.data.isRoot);
+  if (!rootNode) return nodes;
+
+  const centerX = 500;
+  const centerY = 300;
+  const spacing = 200;
+
+  // Position root node in center
+  rootNode.position = { x: centerX, y: centerY };
+
+  // Get children of root node
+  const childNodes = nodes.filter(node => 
+    edges.some(edge => edge.source === rootNode.id && edge.target === node.id)
+  );
+
+  // Position child nodes in a circle around root
+  childNodes.forEach((node, index) => {
+    const angle = (index * 2 * Math.PI) / childNodes.length;
+    node.position = {
+      x: centerX + Math.cos(angle) * spacing,
+      y: centerY + Math.sin(angle) * spacing
+    };
+  });
+
+  return nodes;
+}
+
+// Layout function for flow charts
+function layoutFlowChart(nodes: Node[], edges: Edge[]): Node[] {
+  const startNode = nodes.find(node => node.data.type === 'start');
+  if (!startNode) return nodes;
+
+  const verticalSpacing = 150;
+  const horizontalSpacing = 200;
+  let currentY = 300;
+
+  // Position start node
+  startNode.position = { x: 500, y: currentY };
+  currentY += verticalSpacing;
+
+  // Get next nodes
+  let currentNodes = [startNode];
+  while (currentNodes.length > 0) {
+    const nextNodes: Node[] = [];
+    let currentX = 500 - ((currentNodes.length - 1) * horizontalSpacing) / 2;
+
+    currentNodes.forEach(node => {
+      // Find all nodes this node connects to
+      const connectedNodes = nodes.filter(n => 
+        edges.some(e => e.source === node.id && e.target === n.id)
+      );
+
+      // Position connected nodes
+      connectedNodes.forEach(connectedNode => {
+        connectedNode.position = { x: currentX, y: currentY };
+        currentX += horizontalSpacing;
+        nextNodes.push(connectedNode);
+      });
+    });
+
+    currentNodes = nextNodes;
+    currentY += verticalSpacing;
+  }
+
+  return nodes;
 }
 
 export default function Canvas(props: CanvasProps) {

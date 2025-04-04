@@ -1,19 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, ChangeEvent } from 'react';
 import Canvas from '@/components/canvas/Canvas';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { VisualizationData } from '@/components/canvas/Canvas';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Loader2 } from 'lucide-react';
 
 export default function CanvasPage() {
   const [text, setText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [visualization, setVisualization] = useState<VisualizationData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const handleSubmit = async () => {
+    if (!text.trim()) return;
+
+    setLoading(true);
+    setError(null);
 
     try {
       const response = await fetch('/api/visualize', {
@@ -24,39 +28,66 @@ export default function CanvasPage() {
         body: JSON.stringify({ text }),
       });
 
-      const data = await response.json();
-      console.log('API Response:', data); // Log the API response
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate visualization');
+      }
 
-      // Create visualization data with position
-      const visualizationData: VisualizationData = {
+      const data = await response.json();
+      console.log('Received visualization data:', data);
+
+      if (!data.type || !data.data) {
+        throw new Error('Invalid visualization data received');
+      }
+
+      setVisualization({
         type: data.type,
         data: data.data,
-        position: { x: 100, y: 100 }, // Default position
-      };
+        position: { x: 0, y: 0 }
+      });
 
-      console.log('Visualization Data:', visualizationData); // Log the processed data
-      setVisualization(visualizationData);
-    } catch (error) {
-      console.error('Error:', error);
+    } catch (err) {
+      console.error('Error generating visualization:', err);
+      setError(err instanceof Error ? err.message : 'Failed to generate visualization');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
+  };
+
+  const handleTextChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    setText(e.target.value);
   };
 
   return (
     <div className="flex flex-col h-screen">
       <div className="p-4 border-b">
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <Input
+        <div className="flex gap-4 items-start">
+          <Textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={handleTextChange}
             placeholder="Enter text to visualize..."
-            className="flex-1"
+            className="flex-1 min-h-[100px]"
           />
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Processing...' : 'Visualize'}
+          <Button 
+            onClick={handleSubmit} 
+            disabled={loading || !text.trim()}
+            className="min-w-[120px]"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              'Generate'
+            )}
           </Button>
-        </form>
+        </div>
+        {error && (
+          <div className="mt-2 text-red-500 text-sm">
+            {error}
+          </div>
+        )}
       </div>
       <div className="flex-1">
         <Canvas visualization={visualization} />
