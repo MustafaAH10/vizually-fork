@@ -21,6 +21,8 @@ import ReactFlow, {
   EdgeProps,
   getBezierPath,
   Position,
+  NodeProps,
+  MiniMapNodeProps
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import '@/app/styles/canvas.css';
@@ -30,15 +32,15 @@ import CanvasToolbar from './CanvasToolbar';
 import EditableNode from './EditableNode';
 import html2canvas from 'html2canvas';
 import { cn } from '@/lib/utils';
-import { VennDiagramNode, layoutVennDiagram } from './VennDiagram';
 import { BarChartNode as BarChartComponent, layoutBarChart } from './BarChart';
+import { FlowChartNode as FlowChartComponent, layoutFlowChart as layoutFlow } from './FlowChart';
+import { MindMapNode as MindMapComponent, layoutMindMap as mindMapLayout } from './MindMap';
 
 // Define visualization types
 export type VisualizationType = 
   | 'barChart' 
   | 'mindMap' 
   | 'flowChart' 
-  | 'vennDiagram' 
   | 'arrowDiagram' 
   | 'cycleDiagram' 
   | 'hierarchyDiagram';
@@ -51,16 +53,21 @@ export interface VisualizationData {
 }
 
 // Custom node types - defined outside component and memoized
-const nodeTypes: NodeTypes = {
-  mindMap: MindMapNode,
-  flowChart: FlowChartNode,
-  vennDiagram: VennDiagramNode,
-  editableNode: EditableNode,
+const nodeTypes = {
   barChart: BarChartComponent,
-  arrowDiagram: ArrowDiagramNode,
-  cycleDiagram: CycleDiagramNode,
-  hierarchyDiagram: HierarchyDiagramNode,
-};
+  mindMap: MindMapComponent,
+  flowChart: FlowChartComponent,
+  editableNode: EditableNode,
+} as NodeTypes;
+
+// Define node data type
+interface NodeData {
+  type?: string;
+  title?: string;
+  description?: string;
+  label?: string;
+  isRoot?: boolean;
+}
 
 // Bar Chart Node Component
 function BarChartNode({ data }: { data: any }) {
@@ -223,61 +230,183 @@ interface CanvasProps {
 }
 
 function CanvasContent({ visualization }: CanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null);
   const { project } = useReactFlow();
 
+  // Debug current nodes
   useEffect(() => {
+    console.log('Nodes state changed:', {
+      nodesCount: nodes.length,
+      nodes: nodes.map(n => ({
+        id: n.id,
+        type: n.type,
+        position: n.position,
+        data: {
+          type: n.data.type,
+          title: n.data.title
+        }
+      })),
+      nodeTypes: Object.keys(nodeTypes)
+    });
+  }, [nodes]);
+
+  useEffect(() => {
+    console.log('Canvas visualization update:', {
+      received: !!visualization,
+      type: visualization?.type,
+      data: visualization?.data,
+      fullData: visualization
+    });
+    
     if (!visualization) {
+      console.log('Clearing canvas - no visualization data');
       setNodes([]);
       setEdges([]);
       return;
     }
 
-    console.log('Processing visualization:', visualization);
+    try {
+      console.log('Processing visualization:', {
+        type: visualization.type,
+        data: visualization.data,
+        nodeTypes: Object.keys(nodeTypes),
+        rawData: JSON.stringify(visualization, null, 2)
+      });
 
-    switch (visualization.type) {
-      case 'barChart':
-        if (!visualization.data.barChart?.categories || !visualization.data.barChart?.values) {
-          console.error('Invalid bar chart data structure:', visualization.data);
+      switch (visualization.type) {
+        case 'barChart':
+          if (!visualization.data.categories || !visualization.data.values) {
+            console.error('Invalid bar chart data:', visualization.data);
+            return;
+          }
+          console.log('Creating bar chart with data:', {
+            title: visualization.data.title,
+            categories: visualization.data.categories,
+            values: visualization.data.values
+          });
+          const barChartNodes = layoutBarChart({
+            title: visualization.data.title || 'Bar Chart',
+            description: visualization.data.description,
+            categories: visualization.data.categories,
+            values: visualization.data.values,
+            colors: visualization.data.colors
+          });
+          console.log('Bar chart nodes created:', barChartNodes);
+          setNodes(barChartNodes);
+          setEdges([]);
+          break;
+
+        case 'mindMap':
+          console.log('Mind map data structure:', {
+            hasData: !!visualization.data,
+            hasMindMap: !!visualization.data?.mindMap,
+            hasRoot: !!visualization.data?.mindMap?.root,
+            dataKeys: Object.keys(visualization.data || {}),
+            mindMapKeys: Object.keys(visualization.data?.mindMap || {}),
+            rootKeys: Object.keys(visualization.data?.mindMap?.root || {})
+          });
+
+          if (!visualization.data?.mindMap?.root) {
+            console.error('Invalid mind map data structure:', {
+              data: visualization.data,
+              expected: {
+                mindMap: {
+                  root: {
+                    title: 'string',
+                    description: 'string',
+                    children: []
+                  }
+                }
+              }
+            });
+            return;
+          }
+          console.log('Creating mind map with data:', {
+            root: visualization.data.mindMap.root,
+            title: visualization.data.title
+          });
+          
+          // Transform the data structure to match our component's expectations
+          const rootNode = {
+            id: 'root',
+            title: visualization.data.mindMap.root.title || visualization.data.title || 'Mind Map',
+            description: visualization.data.mindMap.root.description || visualization.data.description,
+            isRoot: true,
+            children: visualization.data.mindMap.root.children.map((child: any, index: number) => ({
+              id: `child-${index}`,
+              title: child.title,
+              description: child.description,
+              isRoot: false
+            }))
+          };
+
+          const mindMapResult = mindMapLayout(rootNode);
+          console.log('Mind map layout created:', {
+            nodes: mindMapResult.nodes,
+            edges: mindMapResult.edges
+          });
+          setNodes(mindMapResult.nodes);
+          setEdges(mindMapResult.edges);
+          break;
+
+        case 'flowChart':
+          if (!visualization.data.nodes || !visualization.data.edges) {
+            console.error('Invalid flow chart data:', visualization.data);
+            return;
+          }
+          console.log('Creating flow chart with data:', {
+            nodes: visualization.data.nodes,
+            edges: visualization.data.edges
+          });
+          const flowLayout = layoutFlow({
+            nodes: visualization.data.nodes.map((node: { id: string; type: string; title: string; description?: string }) => ({
+              ...node,
+              width: 250,
+              height: node.type === 'decision' ? 200 : undefined
+            })),
+            edges: visualization.data.edges
+          });
+          console.log('Flow chart layout created:', {
+            nodes: flowLayout.nodes,
+            edges: flowLayout.edges
+          });
+          setNodes(flowLayout.nodes);
+          setEdges(flowLayout.edges);
+          break;
+
+        default:
+          console.error('Unknown visualization type:', visualization.type);
           return;
-        }
-        const barChartNodes = layoutBarChart({
-          title: visualization.data.title || 'Bar Chart',
-          description: visualization.data.description,
-          categories: visualization.data.barChart.categories,
-          values: visualization.data.barChart.values,
-          colors: visualization.data.barChart.colors
-        });
-        setNodes(barChartNodes);
-        setEdges([]);
-        break;
-
-      case 'vennDiagram':
-        if (!visualization.data.vennDiagram?.circles) {
-          console.error('Invalid Venn diagram data structure:', visualization.data);
-          return;
-        }
-        const vennNodes = layoutVennDiagram(visualization.data.vennDiagram.circles);
-        setNodes(vennNodes);
-        setEdges([]);
-        break;
-
-      default:
-        console.error('Unknown visualization type:', visualization.type);
-        return;
+      }
+    } catch (error) {
+      console.error('Error processing visualization:', error);
     }
   }, [visualization, setNodes, setEdges]);
 
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    event.stopPropagation();
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node<NodeData>) => {
     setSelectedNode(node);
   }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
   }, []);
+
+  const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node<NodeData>) => {
+    // Handle node double click if needed
+  }, []);
+
+  const handleAddNode = useCallback((type: string) => {
+    const position = project({ x: 100, y: 100 });
+    const newNode = {
+      id: `${type}-${Date.now()}`,
+      type,
+      position,
+      data: { label: `New ${type} node` }
+    };
+    setNodes((nds) => nds.concat(newNode));
+  }, [project, setNodes]);
 
   const handleDeleteNode = useCallback(() => {
     if (selectedNode) {
@@ -288,28 +417,6 @@ function CanvasContent({ visualization }: CanvasProps) {
       setSelectedNode(null);
     }
   }, [selectedNode, setNodes, setEdges]);
-
-  const handleAddNode = useCallback(
-    (type: string) => {
-      const newNode: Node = {
-        id: `node-${Date.now()}`,
-        type: 'editableNode',
-        position: project({ x: Math.random() * 500, y: Math.random() * 500 }),
-        data: { label: '', type },
-      };
-      setNodes((nds) => [...nds, newNode]);
-    },
-    [project, setNodes]
-  );
-
-  const onNodeDoubleClick = useCallback((event: React.MouseEvent, node: Node) => {
-    // Handle double click to edit text
-    const nodeElement = event.target as HTMLElement;
-    if (!nodeElement.closest('.nodrag')) {
-      // Only trigger edit if not clicking on a handle or button
-      setSelectedNode(node);
-    }
-  }, []);
 
   const handleSaveImage = useCallback(() => {
     const element = document.querySelector('.react-flow') as HTMLElement;
@@ -372,8 +479,22 @@ function CanvasContent({ visualization }: CanvasProps) {
     }
   }, []);
 
+  const getNodeColor = useCallback((node: { data: NodeData }) => {
+    const type = node.data?.type;
+    switch (type) {
+      case 'start':
+        return '#22C55E';
+      case 'end':
+        return '#EF4444';
+      case 'decision':
+        return '#FFB547';
+      default:
+        return '#3B82F6';
+    }
+  }, []);
+
   return (
-    <div className="w-full h-[calc(100vh-4rem)] relative">
+    <div className="w-full h-full relative" style={{ height: 'calc(100vh - 4rem)' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -384,25 +505,45 @@ function CanvasContent({ visualization }: CanvasProps) {
         onNodeDoubleClick={onNodeDoubleClick}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ 
+          padding: 0.2,
+          minZoom: 0.5,
+          maxZoom: 2
+        }}
         minZoom={0.5}
         maxZoom={2}
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        className="bg-background"
+        style={{ width: '100%', height: '100%' }}
+        onInit={(reactFlowInstance) => {
+          console.log('ReactFlow initialized:', {
+            nodes: reactFlowInstance.getNodes(),
+            viewport: reactFlowInstance.getViewport(),
+            nodeTypes: Object.keys(nodeTypes)
+          });
+          // Force a fit view after initialization
+          setTimeout(() => {
+            reactFlowInstance.fitView({ padding: 0.2 });
+          }, 100);
+        }}
       >
         <Background />
         <Controls />
-        <MiniMap />
-        
+        <MiniMap nodeColor={getNodeColor as any} />
         <Panel position="top-right" className="bg-white rounded-lg shadow-lg p-2 flex gap-2">
           {selectedNode && (
-            <button
-              onClick={handleDeleteNode}
-              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              <Trash2 size={16} />
-              <span>Delete</span>
-            </button>
+            <div>
+              <h3>Selected: {selectedNode.data.title}</h3>
+              <p>{selectedNode.data.description}</p>
+            </div>
           )}
+          <button
+            onClick={handleDeleteNode}
+            className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+          >
+            <Trash2 size={16} />
+            <span>Delete</span>
+          </button>
           <button
             onClick={handleSaveImage}
             className="flex items-center gap-2 px-3 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -417,7 +558,6 @@ function CanvasContent({ visualization }: CanvasProps) {
           </button>
         </Panel>
       </ReactFlow>
-
       <CanvasToolbar onAddNode={handleAddNode} />
     </div>
   );
@@ -550,8 +690,10 @@ function layoutFlowChart(nodes: Node[], edges: Edge[]): Node[] {
 
 export default function Canvas(props: CanvasProps) {
   return (
-    <ReactFlowProvider>
-      <CanvasContent {...props} />
-    </ReactFlowProvider>
+    <div className="w-full h-full">
+      <ReactFlowProvider>
+        <CanvasContent {...props} />
+      </ReactFlowProvider>
+    </div>
   );
 } 

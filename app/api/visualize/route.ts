@@ -1,6 +1,57 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
+interface BaseVisualizationData {
+  title: string;
+  description: string;
+}
+
+interface VennDiagramData extends BaseVisualizationData {
+  circles: Array<{
+    id: string;
+    title: string;
+    description: string;
+    items: string[];
+  }>;
+}
+
+interface BarChartData extends BaseVisualizationData {
+  categories: string[];
+  values: number[];
+  colors?: string[];
+}
+
+interface FlowChartData extends BaseVisualizationData {
+  nodes: Array<{
+    id: string;
+    type: 'start' | 'process' | 'decision' | 'end';
+    title: string;
+    description: string;
+  }>;
+  edges: Array<{
+    source: string;
+    target: string;
+    label: string;
+  }>;
+}
+
+interface MindMapData extends BaseVisualizationData {
+  mindMap: {
+    root: {
+      id: string;
+      title: string;
+      description: string;
+      children: Array<{
+        id: string;
+        title: string;
+        description: string;
+      }>;
+    };
+  };
+}
+
+type VisualizationData = VennDiagramData | BarChartData | FlowChartData | MindMapData;
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -43,6 +94,30 @@ const generateVizStructureFunction = {
         properties: {
           title: { type: "string" },
           description: { type: "string" },
+          mindMap: {
+            type: "object",
+            properties: {
+              root: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  children: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        description: { type: "string" }
+                      }
+                    }
+                  }
+                },
+                required: ["title", "children"]
+              }
+            },
+            required: ["root"]
+          },
           barChart: {
             type: "object",
             properties: {
@@ -94,162 +169,105 @@ const generateVizStructureFunction = {
 
 export async function POST(req: Request) {
   try {
-    const { text } = await req.json();
-    console.log('Received text:', text);
+    const { threadId, message, type } = await req.json();
 
-    // Step 1: Create assistant for determining visualization type
-    const typeAssistant = await openai.beta.assistants.create({
-      name: "Visualization Type Determiner",
-      instructions: `You are an expert at determining the most appropriate visualization type for given text.
-      Consider the following:
-      1. Bar Chart: Best for comparing quantities across categories, showing numerical data, trends over time, or comparing values
-      2. Mind Map: Best for hierarchical relationships and brainstorming
-      3. Flow Chart: Best for processes, decisions, and sequences
-      4. Venn Diagram: Best for showing relationships and overlaps between concepts
-      
-      Analyze the text and choose the most appropriate visualization type.
-      Always respond in JSON format with the following structure:
-      {
-        "type": "barChart" | "mindMap" | "flowChart" | "vennDiagram",
-        "reasoning": "string explaining your choice"
-      }`,
-      model: "gpt-4-turbo-preview",
-      tools: [{ type: "function", function: determineVizTypeFunction }],
-      response_format: { type: "json_object" }
+    if (!threadId || !message) {
+      return NextResponse.json(
+        { error: 'Thread ID and message are required' },
+        { status: 400 }
+      );
+    }
+
+    console.log('Generating visualization for message:', message);
+    console.log('Requested type:', type);
+
+    // Run the visualization assistant
+    const vizRun = await openai.beta.threads.runs.create(threadId, {
+      assistant_id: process.env.OPENAI_VISUALIZATION_ASSISTANT_ID!,
+      additional_instructions: type ? `Generate a ${type} visualization.` : undefined
     });
 
-    // Create thread for type determination
-    const typeThread = await openai.beta.threads.create();
-    await openai.beta.threads.messages.create(typeThread.id, {
-      role: "user",
-      content: `Analyze this text and determine the best visualization type in JSON format: ${text}`
-    });
-
-    // Run type determination
-    const typeRun = await openai.beta.threads.runs.create(typeThread.id, {
-      assistant_id: typeAssistant.id
-    });
-
-    let typeRunStatus = await openai.beta.threads.runs.retrieve(typeThread.id, typeRun.id);
-    let vizType = null;
-
-    while (typeRunStatus.status !== 'completed') {
-      if (typeRunStatus.status === 'requires_action') {
-        const toolCalls = typeRunStatus.required_action?.submit_tool_outputs.tool_calls || [];
-        if (toolCalls.length > 0) {
-          const toolCall = toolCalls[0];
-          if (toolCall.function?.name === 'determine_visualization_type') {
-            vizType = JSON.parse(toolCall.function.arguments);
-            console.log('Determined visualization type:', vizType);
-          }
-        }
-        await openai.beta.threads.runs.submitToolOutputs(typeThread.id, typeRun.id, {
-          tool_outputs: toolCalls.map(toolCall => ({
-            tool_call_id: toolCall.id,
-            output: "{}"
-          }))
-        });
-      }
+    // Wait for the visualization run to complete
+    let vizRunStatus = await openai.beta.threads.runs.retrieve(threadId, vizRun.id);
+    while (vizRunStatus.status !== 'completed') {
       await new Promise(resolve => setTimeout(resolve, 1000));
-      typeRunStatus = await openai.beta.threads.runs.retrieve(typeThread.id, typeRun.id);
+      vizRunStatus = await openai.beta.threads.runs.retrieve(threadId, vizRun.id);
     }
 
-    if (!vizType) {
-      throw new Error('Failed to determine visualization type');
-    }
+    // Get the visualization data
+    const vizMessages = await openai.beta.threads.messages.list(threadId);
+    const vizMessage = vizMessages.data[0].content[0];
+    const vizContent = 'text' in vizMessage ? vizMessage.text.value : '{}';
+    
+    console.log('Raw visualization data:', vizContent);
 
-    // Step 2: Create assistant for generating visualization structure
-    const structureAssistant = await openai.beta.assistants.create({
-      name: "Visualization Structure Generator",
-      instructions: `You are an expert at generating detailed visualization structures.
-      Based on the determined visualization type, create a well-structured visualization with:
-      1. Clear hierarchy and relationships
-      2. Appropriate colors and styling
-      3. Meaningful labels and descriptions
-      4. Proper positioning and layout
+    try {
+      const vizData = JSON.parse(vizContent);
+      console.log('Parsed visualization data:', vizData);
       
-      For bar charts:
-      1. Extract numerical values and categories from the text
-      2. Ensure values are properly formatted numbers
-      3. Use clear, descriptive category labels
-      4. Add a meaningful title and description
-      5. Use appropriate colors (hex codes) that are visually pleasing
-      
-      Always respond in JSON format with the structure defined in the function schema.
-      For bar charts, the response should look like:
-      {
-        "type": "barChart",
-        "data": {
-          "title": "Chart Title",
-          "description": "Chart Description",
-          "barChart": {
-            "categories": ["Category 1", "Category 2", ...],
-            "values": [value1, value2, ...],
-            "colors": ["#hexcolor1", "#hexcolor2", ...]
+      // Transform the data structure based on visualization type
+      let transformedData: VisualizationData = {
+        title: vizData.data.title,
+        description: vizData.data.description
+      } as VisualizationData;
+
+      if (vizData.type === 'vennDiagram' && vizData.data.vennDiagram) {
+        transformedData = {
+          ...transformedData,
+          circles: vizData.data.vennDiagram.circles
+        } as VennDiagramData;
+      } else if (vizData.type === 'barChart' && vizData.data.barChart) {
+        transformedData = {
+          ...transformedData,
+          categories: vizData.data.barChart.categories,
+          values: vizData.data.barChart.values,
+          colors: vizData.data.barChart.colors
+        } as BarChartData;
+      } else if (vizData.type === 'flowChart' && vizData.data.flowChart) {
+        transformedData = {
+          ...transformedData,
+          nodes: vizData.data.flowChart.nodes,
+          edges: vizData.data.flowChart.edges
+        } as FlowChartData;
+      } else if (vizData.type === 'mindMap' && vizData.data.mindMap) {
+        transformedData = {
+          ...transformedData,
+          mindMap: {
+            root: {
+              id: 'root',
+              title: vizData.data.mindMap.root.title,
+              description: vizData.data.mindMap.root.description,
+              children: vizData.data.mindMap.root.children.map((child: any, index: number) => ({
+                id: `child-${index}`,
+                title: child.title,
+                description: child.description
+              }))
+            }
           }
-        }
-      }`,
-      model: "gpt-4-turbo-preview",
-      tools: [{ type: "function", function: generateVizStructureFunction }],
-      response_format: { type: "json_object" }
-    });
-
-    // Create thread for structure generation
-    const structureThread = await openai.beta.threads.create();
-    await openai.beta.threads.messages.create(structureThread.id, {
-      role: "user",
-      content: `Generate a ${vizType.type} visualization for the following text in JSON format: ${text}`
-    });
-
-    // Run structure generation
-    const structureRun = await openai.beta.threads.runs.create(structureThread.id, {
-      assistant_id: structureAssistant.id
-    });
-
-    let structureRunStatus = await openai.beta.threads.runs.retrieve(structureThread.id, structureRun.id);
-    let visualizationData = null;
-
-    while (structureRunStatus.status !== 'completed') {
-      if (structureRunStatus.status === 'requires_action') {
-        const toolCalls = structureRunStatus.required_action?.submit_tool_outputs.tool_calls || [];
-        if (toolCalls.length > 0) {
-          const toolCall = toolCalls[0];
-          if (toolCall.function?.name === 'generate_visualization_structure') {
-            visualizationData = JSON.parse(toolCall.function.arguments);
-            console.log('Generated visualization data:', visualizationData);
-          }
-        }
-        await openai.beta.threads.runs.submitToolOutputs(structureThread.id, structureRun.id, {
-          tool_outputs: toolCalls.map(toolCall => ({
-            tool_call_id: toolCall.id,
-            output: "{}"
-          }))
-        });
+        } as MindMapData;
       }
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      structureRunStatus = await openai.beta.threads.runs.retrieve(structureThread.id, structureRun.id);
+
+      console.log('Transformed data:', transformedData);
+      
+      return NextResponse.json({
+        visualization: {
+          type: type || vizData.type,
+          data: transformedData,
+          position: { x: 0, y: 0 }
+        }
+      });
+    } catch (error) {
+      console.error('Error parsing visualization data:', error);
+      return NextResponse.json(
+        { error: 'Failed to parse visualization data' },
+        { status: 500 }
+      );
     }
-
-    if (!visualizationData) {
-      throw new Error('Failed to generate visualization structure');
-    }
-
-    // Clean up
-    await openai.beta.assistants.del(typeAssistant.id);
-    await openai.beta.assistants.del(structureAssistant.id);
-    await openai.beta.threads.del(typeThread.id);
-    await openai.beta.threads.del(structureThread.id);
-
-    return NextResponse.json({
-      type: vizType.type,
-      reasoning: vizType.reasoning,
-      data: visualizationData.data
-    });
 
   } catch (error) {
     console.error('Error in visualization API:', error);
     return NextResponse.json(
-      { error: 'Failed to process visualization request', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to generate visualization' },
       { status: 500 }
     );
   }
